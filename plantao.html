@@ -8,8 +8,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
-        .kanban-column { min-height: 400px; transition: all 0.2s; }
+        .kanban-column { min-height: 450px; transition: all 0.2s; }
         .drag-over { background-color: rgba(59, 130, 246, 0.05); border: 2px dashed #3b82f6 !important; }
+        /* Scrollbar personalizada para ficar mais bonito */
+        ::-webkit-scrollbar { height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-slate-50 p-4 font-sans text-slate-800">
@@ -23,8 +27,8 @@
             
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex bg-slate-100 p-1 rounded-xl mr-2">
-                    <button onclick="switchView('kanban')" class="px-4 py-2 rounded-lg text-sm font-bold transition hover:bg-white active:shadow-sm">Kanban</button>
-                    <button onclick="switchView('table')" class="px-4 py-2 rounded-lg text-sm font-bold transition hover:bg-white active:shadow-sm">Tabela</button>
+                    <button onclick="switchView('kanban')" id="tab-kanban" class="px-4 py-2 rounded-lg text-sm font-bold bg-white shadow-sm transition">Kanban</button>
+                    <button onclick="switchView('table')" id="tab-table" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-500 hover:text-slate-800 transition">Tabela</button>
                 </div>
                 <button onclick="addDate()" class="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition inline-flex items-center">
                     + Nova Data
@@ -53,16 +57,17 @@
     </div>
 
     <script>
-        let funcionarios = JSON.parse(localStorage.getItem('escala_final')) || [];
-        let colunas = JSON.parse(localStorage.getItem('datas_final')) || [];
+        let funcionarios = JSON.parse(localStorage.getItem('escala_vfinal')) || [];
+        let colunas = JSON.parse(localStorage.getItem('datas_vfinal')) || [];
 
         function save() {
-            localStorage.setItem('escala_final', JSON.stringify(funcionarios));
-            localStorage.setItem('datas_final', JSON.stringify(colunas));
+            // Ordenar datas antes de salvar
+            colunas.sort();
+            localStorage.setItem('escala_vfinal', JSON.stringify(funcionarios));
+            localStorage.setItem('datas_vfinal', JSON.stringify(colunas));
             render();
         }
 
-        // FUNÇÃO DE FORMATAÇÃO (Usada em ambos os lugares agora)
         function formatarDataUser(dataStr) {
             if(!dataStr) return "";
             const data = new Date(dataStr + 'T12:00:00');
@@ -72,17 +77,16 @@
         }
 
         window.addDate = function() {
-            const d = prompt("Digite a data (Formato: AAAA-MM-DD):", new Date().toISOString().split('T')[0]);
+            const d = prompt("Digite a data (AAAA-MM-DD):", new Date().toISOString().split('T')[0]);
             if (d && !colunas.includes(d)) {
                 colunas.push(d);
-                colunas.sort();
                 save();
             }
         };
 
         window.addFunc = function(data) {
             const nome = prompt("Nome completo:");
-            const cargo = prompt("Cargo ou Horário (ex: 12x36, Noturno):");
+            const cargo = prompt("Cargo ou Turno (ex: Noturno):");
             if (nome) {
                 funcionarios.push({ id: Date.now().toString(), nome, cargo: cargo || "Geral", data });
                 save();
@@ -105,7 +109,7 @@
             const kanban = document.getElementById('kanban-view');
             const tableBody = document.getElementById('table-body');
 
-            // Kanban
+            // Render Kanban
             kanban.innerHTML = colunas.map(data => `
                 <div class="min-w-[300px] bg-slate-100/50 border border-slate-200 rounded-3xl p-4 kanban-column"
                      ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '${data}')">
@@ -131,28 +135,34 @@
                 </div>
             `).join('');
 
-            // Tabela (CORRIGIDO AQUI)
-            tableBody.innerHTML = funcionarios.length ? funcionarios.map(f => `
+            // Ordenar funcionários para a Tabela por Data
+            const funcionariosOrdenados = [...funcionarios].sort((a, b) => a.data.localeCompare(b.data));
+
+            tableBody.innerHTML = funcionariosOrdenados.length ? funcionariosOrdenados.map(f => `
                 <tr class="hover:bg-slate-50 transition group">
                     <td class="p-5 text-sm font-bold text-slate-700">${f.nome}</td>
                     <td class="p-5 text-sm text-slate-500">${f.cargo}</td>
                     <td class="p-5">
-                        <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold border border-blue-100">
+                        <span class="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold border border-blue-100 inline-block">
                             ${formatarDataUser(f.data)}
                         </span>
                     </td>
                     <td class="p-5 text-center">
-                        <button onclick="funcionarios=funcionarios.filter(x=>x.id!=='${f.id}');save();" class="text-slate-300 hover:text-red-500 transition-colors">
+                        <button onclick="funcionarios=funcionarios.filter(x=>x.id!=='${f.id}');save();" class="text-slate-300 hover:text-red-500 font-bold text-xs uppercase tracking-tighter transition-colors">
                             Remover
                         </button>
                     </td>
                 </tr>
-            `).join('') : `<tr><td colspan="4" class="p-10 text-center text-slate-400 text-sm font-medium">Nenhum funcionário escalado ainda.</td></tr>`;
+            `).join('') : `<tr><td colspan="4" class="p-10 text-center text-slate-400 text-sm font-medium">Nenhum funcionário escalado.</td></tr>`;
         }
 
         window.switchView = (v) => {
             document.getElementById('kanban-view').classList.toggle('hidden', v !== 'kanban');
             document.getElementById('table-view').classList.toggle('hidden', v !== 'table');
+            
+            // Estilo das abas
+            document.getElementById('tab-kanban').className = v === 'kanban' ? 'px-4 py-2 rounded-lg text-sm font-bold bg-white shadow-sm transition' : 'px-4 py-2 rounded-lg text-sm font-bold text-slate-500 hover:text-slate-800 transition';
+            document.getElementById('tab-table').className = v === 'table' ? 'px-4 py-2 rounded-lg text-sm font-bold bg-white shadow-sm transition' : 'px-4 py-2 rounded-lg text-sm font-bold text-slate-500 hover:text-slate-800 transition';
         };
 
         window.exportPDF = () => {
@@ -160,11 +170,15 @@
             const doc = new jsPDF();
             doc.setFontSize(18);
             doc.text("Relatório de Escala", 14, 20);
+            
+            const funcionariosOrdenados = [...funcionarios].sort((a, b) => a.data.localeCompare(b.data));
+
             doc.autoTable({
                 head: [['Funcionário', 'Cargo/Turno', 'Data do Plantão']],
-                body: funcionarios.map(f => [f.nome, f.cargo, formatarDataUser(f.data)]),
+                body: funcionariosOrdenados.map(f => [f.nome, f.cargo, formatarDataUser(f.data)]),
                 startY: 30,
-                headStyles: { fillColor: [51, 65, 85] }
+                headStyles: { fillColor: [51, 65, 85], fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [248, 250, 252] }
             });
             doc.save("escala-plantao.pdf");
         };
