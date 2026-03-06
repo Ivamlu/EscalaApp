@@ -1,109 +1,171 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Escala Simples</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escala Pro - Kanban & Tabela</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .kanban-column { min-height: 300px; transition: background 0.2s; }
+        .drag-over { background-color: rgba(59, 130, 246, 0.1) !important; border: 2px dashed #3b82f6 !important; }
+        .card { cursor: grab; }
+        .card:active { cursor: grabbing; }
+    </style>
 </head>
-<body class="bg-gray-100 p-4">
-    <div class="max-w-7xl mx-auto">
-        <div class="flex gap-4 mb-6 bg-white p-4 rounded shadow">
-            <button onclick="window.addDate()" class="bg-blue-600 text-white px-4 py-2 rounded"> + Adicionar Data </button>
-            <button onclick="document.getElementById('kanban').style.display='flex'; document.getElementById('tabela').style.display='none'" class="border px-4 py-2 rounded"> Kanban </button>
-            <button onclick="document.getElementById('kanban').style.display='none'; document.getElementById('tabela').style.display='block'" class="border px-4 py-2 rounded"> Tabela </button>
-            <button onclick="localStorage.clear(); location.reload();" class="text-red-500 text-xs"> Limpar Tudo </button>
+<body class="bg-gray-50 p-4 font-sans text-gray-800">
+
+    <div class="max-w-[1600px] mx-auto">
+        <div class="flex flex-wrap items-center justify-between mb-8 bg-white p-4 rounded-xl shadow-sm border gap-4">
+            <h1 class="text-xl font-bold border-r pr-4 mr-2">Escala de Plantão</h1>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="switchView('kanban')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">Kanban</button>
+                <button onclick="switchView('table')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">Tabela</button>
+                <button onclick="addDate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">+ Adicionar Data</button>
+                <button onclick="exportPDF()" class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition">Baixar PDF</button>
+            </div>
         </div>
 
-        <div id="kanban" class="flex gap-4 overflow-x-auto"></div>
+        <div id="kanban-view" class="flex gap-4 overflow-x-auto pb-6"></div>
 
-        <div id="tabela" class="hidden bg-white rounded shadow p-4">
-            <table class="w-full border-collapse">
-                <thead><tr class="border-b"><th>Nome</th><th>Cargo</th><th>Data</th></tr></thead>
-                <tbody id="tabela-corpo"></tbody>
+        <div id="table-view" class="hidden bg-white rounded-xl shadow-sm border overflow-hidden">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="p-4 font-semibold text-sm">Funcionário</th>
+                        <th class="p-4 font-semibold text-sm">Cargo/Turno</th>
+                        <th class="p-4 font-semibold text-sm">Data</th>
+                        <th class="p-4 font-semibold text-sm">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
             </table>
         </div>
     </div>
 
     <script>
-        // Dados e Cores
-        let dados = JSON.parse(localStorage.getItem('escala_v1')) || [];
-        let datas = JSON.parse(localStorage.getItem('datas_v1')) || [];
-        const cores = {
-            azul: 'bg-blue-100 text-blue-800 border-blue-300',
-            verde: 'bg-green-100 text-green-800 border-green-300',
-            amarelo: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-            rosa: 'bg-pink-100 text-pink-800 border-pink-300'
-        };
-
-        window.addDate = function() {
-            const d = prompt("Digite a data (ex: 2026-03-05):");
-            if(d) {
-                if(!datas.includes(d)) datas.push(d);
-                datas.sort();
-                save();
-            }
-        };
-
-        window.addFunc = function(data) {
-            const nome = prompt("Nome do Funcionário:");
-            const cargo = prompt("Turno/Cargo:");
-            const cor = prompt("Cor (azul, verde, amarelo, rosa):", "azul");
-            if(nome) {
-                dados.push({ id: Date.now(), nome, cargo, data, cor });
-                save();
-            }
-        };
-
-        window.remover = function(id) {
-            dados = dados.filter(x => x.id !== id);
-            save();
-        };
+        // Estado inicial
+        let funcionarios = JSON.parse(localStorage.getItem('escala_v3')) || [];
+        let colunas = JSON.parse(localStorage.getItem('datas_v3')) || [];
 
         function save() {
-            localStorage.setItem('escala_v1', JSON.stringify(dados));
-            localStorage.setItem('datas_v1', JSON.stringify(datas));
+            localStorage.setItem('escala_v3', JSON.stringify(funcionarios));
+            localStorage.setItem('datas_v3', JSON.stringify(colunas));
             render();
         }
 
-        function formatarData(str) {
-            const d = new Date(str + 'T12:00:00');
-            const dias = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-            const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return dias[d.getDay()] + ', ' + d.getDate() + '/' + meses[d.getMonth()];
+        // Formatação da Data (ex: 03/03 sexta-feira)
+        function formatarDataLonga(dataStr) {
+            const data = new Date(dataStr + 'T12:00:00');
+            const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            const diaSemana = data.toLocaleDateString('pt-BR', { weekday: 'long' });
+            return `${diaMes} ${diaSemana}`;
         }
 
+        // Adicionar Data
+        window.addDate = function() {
+            const d = prompt("Digite a data (AAAA-MM-DD):", "2026-03-05");
+            if (d && !colunas.includes(d)) {
+                colunas.push(d);
+                colunas.sort();
+                save();
+            }
+        };
+
+        // Adicionar Funcionário
+        window.addFunc = function(data) {
+            const nome = prompt("Nome do Funcionário:");
+            const cargo = prompt("Cargo ou Turno:");
+            if (nome) {
+                funcionarios.push({ id: Date.now().toString(), nome, cargo, data });
+                save();
+            }
+        };
+
+        // Lógica de Arrastar (Drag and Drop)
+        function onDragStart(event, id) {
+            event.dataTransfer.setData("text/plain", id);
+        }
+
+        function onDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('drag-over');
+        }
+
+        function onDragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+
+        function onDrop(event, novaData) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+            const id = event.dataTransfer.getData("text/plain");
+            const func = funcionarios.find(f => f.id === id);
+            if (func) {
+                func.data = novaData;
+                save();
+            }
+        }
+
+        // Renderização
         function render() {
+            const kanban = document.getElementById('kanban-view');
+            const tableBody = document.getElementById('table-body');
+
             // Render Kanban
-            const kanban = document.getElementById('kanban');
-            kanban.innerHTML = datas.map(d => `
-                <div class="min-w-[250px] bg-gray-200 p-3 rounded-lg">
-                    <div class="font-bold mb-3 flex justify-between uppercase text-xs">
-                        ${formatarData(d)}
-                        <button onclick="datas=datas.filter(x=>x!=='${d}');save();" class="text-red-400">X</button>
+            kanban.innerHTML = colunas.map(data => `
+                <div class="min-w-[280px] bg-gray-200/50 border border-gray-200 rounded-xl p-3 kanban-column"
+                     ondragover="onDragOver(event)" 
+                     ondragleave="onDragLeave(event)" 
+                     ondrop="onDrop(event, '${data}')">
+                    <div class="flex justify-between items-center mb-4 px-1 text-gray-600">
+                        <span class="text-xs font-bold uppercase tracking-wider">${formatarDataLonga(data)}</span>
+                        <button onclick="colunas=colunas.filter(d=>d!=='${data}');save();" class="text-gray-400 hover:text-red-500">×</button>
                     </div>
                     <div class="space-y-2">
-                        ${dados.filter(f => f.data === d).map(f => `
-                            <div class="p-3 rounded border shadow-sm relative ${cores[f.cor] || cores.azul}">
-                                <button onclick="remover(${f.id})" class="absolute top-1 right-1 text-xs opacity-50">x</button>
-                                <div class="font-bold text-sm">${f.nome}</div>
-                                <div class="text-[10px] uppercase font-bold opacity-70">${f.cargo}</div>
+                        ${funcionarios.filter(f => f.data === data).map(f => `
+                            <div draggable="true" ondragstart="onDragStart(event, '${f.id}')" 
+                                 class="card bg-white p-3 rounded-lg shadow-sm border hover:shadow-md transition">
+                                <p class="font-bold text-sm mb-1">${f.nome}</p>
+                                <p class="text-[10px] text-gray-400 uppercase font-black">${f.cargo || '---'}</p>
+                                <button onclick="funcionarios=funcionarios.filter(x=>x.id!=='${f.id}');save();" class="mt-2 text-[10px] text-red-300 hover:text-red-500 font-bold">REMOVER</button>
                             </div>
                         `).join('')}
-                        <button onclick="addFunc('${d}')" class="w-full py-1 border-2 border-dashed border-gray-400 text-gray-500 rounded text-xs">+ Adicionar</button>
+                        <button onclick="addFunc('${data}')" class="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 text-xs font-bold hover:bg-white transition">+ ADICIONAR</button>
                     </div>
                 </div>
             `).join('');
 
             // Render Tabela
-            const corpo = document.getElementById('tabela-corpo');
-            corpo.innerHTML = dados.map(f => `
-                <tr class="border-b">
-                    <td class="p-2">${f.nome}</td>
-                    <td class="p-2">${f.cargo}</td>
-                    <td class="p-2">${f.data}</td>
+            tableBody.innerHTML = funcionarios.map(f => `
+                <tr class="border-b hover:bg-gray-50 transition">
+                    <td class="p-4 font-bold text-sm text-gray-700">${f.nome}</td>
+                    <td class="p-4 text-sm text-gray-500">${f.cargo}</td>
+                    <td class="p-4 text-sm text-gray-500">${f.data}</td>
+                    <td class="p-4"><button onclick="funcionarios=funcionarios.filter(x=>x.id!=='${f.id}');save();" class="text-red-400 text-sm">Excluir</button></td>
                 </tr>
             `).join('');
+        }
+
+        // Alternar Visão
+        window.switchView = function(view) {
+            document.getElementById('kanban-view').className = view === 'kanban' ? 'flex gap-4 overflow-x-auto pb-6' : 'hidden';
+            document.getElementById('table-view').className = view === 'table' ? 'bg-white rounded-xl shadow-sm border overflow-hidden' : 'hidden';
+        }
+
+        // Exportar PDF
+        window.exportPDF = function() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text("Escala de Plantão", 14, 15);
+            doc.autoTable({
+                head: [['Nome', 'Cargo', 'Data']],
+                body: funcionarios.map(f => [f.nome, f.cargo, f.data]),
+                startY: 20
+            });
+            doc.save("escala.pdf");
         }
 
         render();
